@@ -1,5 +1,11 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+    <!--    <div class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center">-->
+    <!--      <svg class="animate-spin -ml-1 mr-3 h-12 w-12 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">-->
+    <!--        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>-->
+    <!--        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>-->
+    <!--      </svg>-->
+    <!--    </div>-->
     <div class="container">
       <div class="w-full my-4"></div>
       <section>
@@ -12,12 +18,28 @@
               <input
                 v-model="ticker"
                 v-on:keydown.enter="add"
+                v-on:input="valid = true"
                 type="text"
                 name="wallet"
                 id="wallet"
                 class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                 placeholder="Например DOGE"
               />
+            </div>
+            <div
+              class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
+            >
+              <span
+                v-for="(item, idx) in makeHelpers"
+                :key="idx"
+                @click="add(item.Symbol)"
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+              >
+                {{ item.Symbol }}
+              </span>
+            </div>
+            <div v-if="!valid" class="text-sm text-red-600">
+              Такой тикер уже добавлен
             </div>
           </div>
         </div>
@@ -139,31 +161,52 @@ export default {
       tickers: [],
       sel: null,
       graph: [],
+      valid: true,
+      helpers: [],
+      coinsArr: [],
     };
   },
   methods: {
-    add() {
-      const currentTicker = {
-        name: this.ticker,
-        price: "-",
-      };
-
-      this.tickers.push(currentTicker);
+    subscribeToUpdates(tickerName) {
       setInterval(async () => {
         const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=2db7452caf2bef2a6e3e0a9b2561ae6122646eef7beec9b92c800beac6fa27ec`,
+          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=2db7452caf2bef2a6e3e0a9b2561ae6122646eef7beec9b92c800beac6fa27ec`,
         );
         const data = await f.json();
-
         //currentTicker.price не работает
-        this.tickers.find((t) => t.name === currentTicker.name).price =
+        this.tickers.find((t) => t.name === tickerName).price =
           data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
-        if (this.sel?.name === currentTicker.name) {
+        if (this.sel?.name === tickerName) {
           this.graph.push(data.USD);
         }
       }, 3000);
-      this.ticker = "";
+    },
+    add(symbol) {
+      const currentTicker = {
+        name: typeof symbol !== "object" ? symbol : this.ticker.toUpperCase(),
+        price: "-",
+      };
+
+      this.tickers.find((t) => {
+        if (t.name === currentTicker.name) {
+          this.valid = false;
+        }
+      });
+      if (
+        this.valid &&
+        currentTicker.name.length &&
+        currentTicker.name.trim()
+      ) {
+        this.tickers.push(currentTicker);
+      }
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
+      this.subscribeToUpdates(currentTicker.name);
+      if (this.valid) {
+        this.ticker = "";
+      } else {
+        this.ticker = currentTicker.name;
+      }
     },
     select(ticker) {
       this.sel = ticker;
@@ -179,6 +222,37 @@ export default {
         (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue),
       );
     },
+  },
+  computed: {
+    makeHelpers() {
+      let newHelpers = [];
+      this.coinsArr.forEach((item) => {
+        if (item.FullName.indexOf(this.ticker.toUpperCase()) > 0) {
+          newHelpers.push(item);
+        }
+      });
+      return newHelpers.slice(0, 4);
+    },
+  },
+
+  async created() {
+    const tickersData = localStorage.getItem("cryptonomicon-list");
+
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach((ticker) => {
+        this.subscribeToUpdates(ticker.name);
+      });
+    }
+
+
+    const getCoins = await fetch(
+      `https://min-api.cryptocompare.com/data/all/coinlist?summary=true`,
+    );
+    const data = await getCoins.json();
+    for (let item in data.Data) {
+      this.coinsArr.push(data.Data[item]);
+    }
   },
 };
 </script>
